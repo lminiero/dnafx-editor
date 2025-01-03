@@ -73,15 +73,20 @@ void dnafx_preset_print_debug(dnafx_preset *preset) {
 	DNAFX_LOG(DNAFX_LOG_INFO, "Effects\n");
 	uint8_t i = 0, j = 0;
 	for(i=0; i<9; i++) {
-		DNAFX_LOG(DNAFX_LOG_INFO, "  -- %d\n", preset->effects[i].type);
-		DNAFX_LOG(DNAFX_LOG_INFO, "  -- -- State:  %s\n", preset->effects[i].active ? "on" : "off");
-		DNAFX_LOG(DNAFX_LOG_INFO, "  -- -- Effect: %"SCNu16"\n", preset->effects[i].id);
-		for(j=0; j<6; j++)
-			DNAFX_LOG(DNAFX_LOG_INFO, "  -- -- -- #%"SCNu8": %"SCNu16"\n", j, preset->effects[i].values[j]);
+		DNAFX_LOG(DNAFX_LOG_INFO, "  -- %s\n", dnafx_sections[i].name);
+		DNAFX_LOG(DNAFX_LOG_INFO, "  -- -- State: %s\n", preset->effects[i].active ? "on" : "off");
+		dnafx_effect *f = dnafx_sections[i].effects + preset->effects[i].id;
+		DNAFX_LOG(DNAFX_LOG_INFO, "  -- -- Effect: %s\n", f->name);
+		for(j=0; j<6; j++) {
+			if(f->param_names[j] == NULL)
+				continue;
+			DNAFX_LOG(DNAFX_LOG_INFO, "  -- -- -- %s: %"SCNu16"\n",
+				f->param_names[j], preset->effects[i].values[j]);
+		}
 	}
 	DNAFX_LOG(DNAFX_LOG_INFO, "Expression\n");
 	for(i=0; i<6; i++)
-		DNAFX_LOG(DNAFX_LOG_INFO, "  -- #%"SCNu8": %"SCNu16"\n", i, preset->expressions[i]);
+		DNAFX_LOG(DNAFX_LOG_INFO, "  -- %s: %"SCNu16"\n", dnafx_expression[i], preset->expressions[i]);
 }
 
 void dnafx_preset_free(dnafx_preset *preset) {
@@ -371,6 +376,54 @@ char *dnafx_preset_to_phb(dnafx_preset *preset) {
 	return json_text;
 }
 
+/* Importing and exporting */
+dnafx_preset *dnafx_preset_import(const char *filename, gboolean phb) {
+	if(filename == NULL)
+		return NULL;
+	dnafx_preset *preset = NULL;
+	if(!phb) {
+		/* Open the provided binary file and parse it */
+		uint8_t buf[DNAFX_PRESET_SIZE];
+		if(dnafx_read_file(filename, FALSE, buf, sizeof(buf)) <= 0)
+			return NULL;
+		preset = dnafx_preset_from_bytes(buf, sizeof(buf));
+	} else {
+		/* Open the provided PHB file and parse it */
+		char buf[4096];
+		int blen = dnafx_read_file(filename, TRUE, (uint8_t *)buf, sizeof(buf));
+		if(blen <= 0)
+			return NULL;
+		preset = dnafx_preset_from_phb(buf);
+	}
+	if(preset != NULL)
+		dnafx_preset_add_byname(preset);
+	return preset;
+}
+
+int dnafx_preset_export(dnafx_preset *preset, const char *filename, gboolean phb) {
+	if(preset == NULL || filename == NULL)
+		return -1;
+	if(!phb) {
+		/* Convert the preset to the binary format */
+		uint8_t buf[DNAFX_PRESET_SIZE];
+		if(dnafx_preset_to_bytes(preset, buf, sizeof(buf)) < 0)
+			return -1;
+		if(dnafx_write_file(filename, FALSE, buf, sizeof(buf)) <= 0)
+			return -1;
+	} else {
+		/* Convert the preset to the PHB (JSON) format */
+		char *json_text = dnafx_preset_to_phb(preset);
+		if(json_text == NULL)
+			return -1;
+		if(dnafx_write_file(filename, TRUE, (uint8_t *)json_text, strlen(json_text)) <= 0) {
+			free(json_text);
+			return -1;
+		}
+		free(json_text);
+	}
+	return 0;
+}
+
 /* Presets management */
 int dnafx_preset_add_byid(dnafx_preset *preset, int id) {
 	if(presets_byid == NULL || preset == NULL || id < 1 || id > 200) {
@@ -441,4 +494,43 @@ int dnafx_preset_remove_byname(const char *name, gboolean unref) {
 		done = g_hash_table_steal(presets_byname, name);
 	}
 	return done ? 0 : -1;
+}
+
+/* Listing presets */
+void dnafx_presets_print(void) {
+	dnafx_preset *preset = NULL;
+	DNAFX_LOG(DNAFX_LOG_INFO, "Device presets:\n");
+	if(presets_byid == NULL || g_hash_table_size(presets_byid) == 0) {
+		DNAFX_LOG(DNAFX_LOG_INFO, " (none)");
+	} else {
+		DNAFX_LOG(DNAFX_LOG_INFO, " ");
+		int i = 0;
+		for(i=1; i<=200; i++) {
+			preset = g_hash_table_lookup(presets_byid, GINT_TO_POINTER(i));
+			DNAFX_LOG(DNAFX_LOG_INFO, "[%03d] %-14s   ",
+				preset ? preset->id : 0, preset ? preset->name : NULL);
+			if((i % 3) == 0)
+				DNAFX_LOG(DNAFX_LOG_INFO, "\n ");
+		}
+	}
+	DNAFX_LOG(DNAFX_LOG_INFO, "\n\n");
+	DNAFX_LOG(DNAFX_LOG_INFO, "Named presets:\n");
+	GList *names = presets_byname ? g_hash_table_get_keys(presets_byname) : NULL;
+	if(names == NULL) {
+		DNAFX_LOG(DNAFX_LOG_INFO, " (none)");
+	} else {
+		DNAFX_LOG(DNAFX_LOG_INFO, " ");
+		int i = 0;
+		GList *temp = names;
+		while(temp != NULL) {
+			i++;
+			preset = g_hash_table_lookup(presets_byname, (char *)temp->data);
+			DNAFX_LOG(DNAFX_LOG_INFO, "[XXX] %-14s   ", preset ? preset->name : NULL);
+			if((i % 3) == 0)
+				DNAFX_LOG(DNAFX_LOG_INFO, "\n ");
+			temp = temp->next;
+		}
+	}
+	DNAFX_LOG(DNAFX_LOG_INFO, "\n\n");
+	g_list_free(names);
 }

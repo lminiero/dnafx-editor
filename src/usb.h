@@ -4,10 +4,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <libusb.h>
+
 #include "tasks.h"
 
 /* USB management */
 int dnafx_usb_init(int debug_level);
+const struct libusb_pollfd **dnafx_usb_fds(void);
+int dnafx_usb_get_next_timeout(struct timeval *tv);
 void dnafx_usb_step(void);
 void dnafx_usb_deinit(void);
 

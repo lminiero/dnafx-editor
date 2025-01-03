@@ -60,7 +60,7 @@ int dnafx_read_file(const char *filename, gboolean text, uint8_t *buffer, size_t
 	FILE *file = fopen(filename, (text ? "rt" : "rb"));
 	if(file == NULL) {
 		DNAFX_LOG(DNAFX_LOG_ERR, "Error opening file '%s' for reading: %d (%s)\n",
-			filename, errno, strerror(errno));
+			filename, errno, g_strerror(errno));
 		return -1;
 	}
 	/* Check if the buffer is large enough */
@@ -74,7 +74,7 @@ int dnafx_read_file(const char *filename, gboolean text, uint8_t *buffer, size_t
 	/* Read the content */
 	size_t bytes = fread(buffer, 1, blen, file);
 	if(bytes == 0) {
-		DNAFX_LOG(DNAFX_LOG_ERR, "Error reading data: %d (%s)\n", errno, strerror(errno));
+		DNAFX_LOG(DNAFX_LOG_ERR, "Error reading data: %d (%s)\n", errno, g_strerror(errno));
 		fclose(file);
 		return -1;
 	}
@@ -97,7 +97,7 @@ int dnafx_write_file(const char *filename, gboolean text, uint8_t *buffer, size_
 	FILE *file = fopen(filename, (text ? "wt" : "wb"));
 	if(file == NULL) {
 		DNAFX_LOG(DNAFX_LOG_ERR, "Error opening file '%s' for writing: %d (%s)\n",
-			filename, errno, strerror(errno));
+			filename, errno, g_strerror(errno));
 		return -1;
 	}
 	/* Write the content of the buffer */
@@ -106,7 +106,7 @@ int dnafx_write_file(const char *filename, gboolean text, uint8_t *buffer, size_
 		temp = fwrite(buffer + blen - tot, 1, tot, file);
 		if(temp == 0) {
 			DNAFX_LOG(DNAFX_LOG_ERR, "Error writing data to file '%s: %d (%s)\n",
-				filename, errno, strerror(errno));
+				filename, errno, g_strerror(errno));
 			fclose(file);
 			return -1;
 		}

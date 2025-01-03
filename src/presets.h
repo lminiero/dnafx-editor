@@ -57,6 +57,10 @@ dnafx_preset *dnafx_preset_from_phb(const char *phb);
 int dnafx_preset_to_bytes(dnafx_preset *preset, uint8_t *buf, size_t blen);
 char *dnafx_preset_to_phb(dnafx_preset *preset);
 
+/* Importing and exporting */
+dnafx_preset *dnafx_preset_import(const char *filename, gboolean phb);
+int dnafx_preset_export(dnafx_preset *preset, const char *filename, gboolean phb);
+
 /* Presets management */
 int dnafx_preset_add_byid(dnafx_preset *preset, int id);
 dnafx_preset *dnafx_preset_find_byid(int id);
@@ -64,5 +68,8 @@ int dnafx_preset_remove_byid(int id, gboolean unref);
 int dnafx_preset_add_byname(dnafx_preset *preset);
 dnafx_preset *dnafx_preset_find_byname(const char *name);
 int dnafx_preset_remove_byname(const char *name, gboolean unref);
+
+/* Listing presets */
+void dnafx_presets_print(void);
 
 #endif

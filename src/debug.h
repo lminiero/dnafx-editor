@@ -55,6 +55,9 @@ static const char *dnafx_log_prefix[] = {
 };
 #pragma GCC diagnostic pop
 
+#define DNAFX_COLOR_BOLD	"\e[1m"
+#define DNAFX_COLOR_OFF		"\e[m"
+
 /* Log wrappers */
 #define DNAFX_PRINT g_print
 #define DNAFX_LOG(level, format, ...) \

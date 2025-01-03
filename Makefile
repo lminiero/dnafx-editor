@@ -8,7 +8,7 @@ GDB = -g -ggdb
 
 DNAFX_EDITOR = dnafx-editor
 DNAFX_EDITOR_OBJS = src/dnafx-editor.o src/options.o \
-	src/usb.o src/tasks.o src/presets.o src/utils.o
+	src/usb.o src/tasks.o src/presets.o src/utils.o src/embedded_cli.o
 
 all: $(DNAFX_EDITOR)
 

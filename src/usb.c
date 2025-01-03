@@ -1,5 +1,4 @@
-#include <libusb.h>
-
+#include "dnafx-editor.h"
 #include "usb.h"
 #include "tasks.h"
 #include "presets.h"
@@ -12,7 +11,6 @@
 #define DNAFX_ENDPOINT_IN	(LIBUSB_ENDPOINT_IN | 1)
 #define DNAFX_ENDPOINT_OUT	(LIBUSB_ENDPOINT_OUT | 2)
 #define DNAFX_TIMEOUT		1000
-#define DNAFX_LOOP_TIMEOUT	100000
 #define DNAFX_BUFFER_SIZE	40960
 
 /* Resources */
@@ -157,41 +155,116 @@ int dnafx_usb_init(int debug_level) {
 	return 0;
 }
 
-void dnafx_usb_step(void) {
+static const struct libusb_pollfd **fds = NULL;
+const struct libusb_pollfd **dnafx_usb_fds(void) {
 	if(ctx == NULL)
-		return;
-	struct timeval tv = { .tv_sec = 0, .tv_usec = DNAFX_LOOP_TIMEOUT };
-	libusb_handle_events_timeout(ctx, &tv);
+		return NULL;
+	if(fds == NULL)
+		fds = libusb_get_pollfds(ctx);
+	return fds;
+}
+
+int dnafx_usb_get_next_timeout(struct timeval *tv) {
+	return ctx ? libusb_get_next_timeout(ctx, tv) : 0;
+}
+
+void dnafx_usb_step(void) {
+	if(ctx != NULL) {
+		struct timeval tv = { 0 };
+		libusb_handle_events_timeout(ctx, &tv);
+	}
 	/* If there isn't any task running, check if we have a task waiting */
+	dnafx_task *task = NULL;
 	if(g_atomic_int_compare_and_exchange(&in_flight, 0, 1)) {
 		buf_size = 0;
-		dnafx_task *task = dnafx_tasks_next();
+		task = dnafx_tasks_next();
 		if(task == NULL) {
 			/* Nothing to do */
 			g_atomic_int_set(&in_flight, 0);
 		} else {
 			/* Perform the new activity */
-			if(task->type == DNAFX_TASK_INIT_1) {
+			if(task->type == DNAFX_TASK_CLI) {
+				dnafx_cli();
+				/* This transaction is over, we're ready for another task */
+				g_atomic_int_set(&in_flight, 0);
+			} else if(task->type == DNAFX_TASK_QUIT) {
+				dnafx_quit();
+			} else if(task->type == DNAFX_TASK_HELP) {
+				dnafx_task_show_help();
+			} else if(task->type == DNAFX_TASK_INIT_1) {
+				if(ctx == NULL)
+					goto disconnected;
 				dnafx_send_init(task->type);
 			} else if(task->type == DNAFX_TASK_GET_PRESETS_1) {
+				if(ctx == NULL)
+					goto disconnected;
 				dnafx_send_get_presets(task->type);
 			} else if(task->type == DNAFX_TASK_GET_EXTRAS_1) {
+				if(ctx == NULL)
+					goto disconnected;
 				dnafx_send_get_extras(task->type);
 			} else if(task->type == DNAFX_TASK_CHANGE_PRESET) {
-				dnafx_send_change_preset(task->preset1);
+				if(ctx == NULL)
+					goto disconnected;
+				dnafx_send_change_preset(task->number[0]);
 			} else if(task->type == DNAFX_TASK_RENAME_PRESET) {
+				if(ctx == NULL)
+					goto disconnected;
 				/* TODO */
 			} else if(task->type == DNAFX_TASK_UPLOAD_PRESET_1) {
-				cur_preset = dnafx_preset_find_byname(task->preset_name);
+				if(ctx == NULL)
+					goto disconnected;
+				cur_preset = dnafx_preset_find_byname(task->text[0]);
 				if(cur_preset == NULL) {
-					DNAFX_LOG(DNAFX_LOG_WARN, "Can't upload preset named '%s' (no such preset)\n", task->preset_name);
+					DNAFX_LOG(DNAFX_LOG_WARN, "Can't upload preset named '%s' (no such preset)\n", task->text[0]);
 				} else {
-					cur_preset->id = task->preset1;
+					cur_preset->id = task->number[0];
 					dnafx_preset_to_bytes(cur_preset, cur_preset_bytes, sizeof(cur_preset_bytes));
 					dnafx_send_upload_preset(task->type);
 				}
 			} else if(task->type == DNAFX_TASK_INTERRUPT) {
+				if(ctx == NULL)
+					goto disconnected;
 				dnafx_send_interrupt();
+			} else if(task->type == DNAFX_TASK_LIST_PRESETS) {
+				dnafx_presets_print();
+				/* Nothing to do */
+				g_atomic_int_set(&in_flight, 0);
+			} else if(task->type == DNAFX_TASK_IMPORT_PRESET) {
+				gboolean phb = !strcasecmp(task->text[0], "phb");
+				dnafx_preset *preset = dnafx_preset_import(task->text[1], phb);
+				if(preset != NULL)
+					DNAFX_LOG(DNAFX_LOG_INFO, "  -- Successfully imported preset '%s'\n", preset->name);
+				/* Nothing to do */
+				g_atomic_int_set(&in_flight, 0);
+			} else if(task->type == DNAFX_TASK_PARSE_PRESET) {
+				dnafx_preset *preset = NULL;
+				if(task->number[0] > 0)
+					preset = dnafx_preset_find_byid(task->number[0]);
+				else
+					preset = dnafx_preset_find_byname(task->text[0]);
+				if(preset == NULL) {
+					DNAFX_LOG(DNAFX_LOG_WARN, "No such preset\n");
+				} else {
+					dnafx_preset_print_debug(preset);
+				}
+				/* Nothing to do */
+				g_atomic_int_set(&in_flight, 0);
+			} else if(task->type == DNAFX_TASK_EXPORT_PRESET) {
+				dnafx_preset *preset = NULL;
+				if(task->number[0] > 0)
+					preset = dnafx_preset_find_byid(task->number[0]);
+				else
+					preset = dnafx_preset_find_byname(task->text[0]);
+				if(preset == NULL) {
+					DNAFX_LOG(DNAFX_LOG_WARN, "No such preset\n");
+				} else {
+					gboolean phb = !strcasecmp(task->text[1], "phb");
+					if(dnafx_preset_export(preset, task->text[2], phb) == 0)
+						DNAFX_LOG(DNAFX_LOG_INFO, "  -- Successfully exported preset '%s'\n", preset->name);
+				}
+				/* Nothing to do */
+				g_atomic_int_set(&in_flight, 0);
 			} else {
 				DNAFX_LOG(DNAFX_LOG_WARN, "Task '%s' currently unsupported\n",
 					dnafx_task_type_str(task->type));
@@ -201,9 +274,20 @@ void dnafx_usb_step(void) {
 			dnafx_task_free(task);
 		}
 	}
+	return;
+
+disconnected:
+	DNAFX_LOG(DNAFX_LOG_WARN, "Task '%s' currently unavailable (disconnected)\n",
+		dnafx_task_type_str(task->type));
+	/* Nothing to do */
+	g_atomic_int_set(&in_flight, 0);
+	dnafx_task_free(task);
 }
 
 void dnafx_usb_deinit(void) {
+	if(fds != NULL)
+		libusb_free_pollfds(fds);
+	fds = NULL;
 	if(usb != NULL) {
 		libusb_release_interface(usb, 0);
 		libusb_close(usb);
@@ -394,7 +478,7 @@ void dnafx_send_interrupt(void) {
 	uint8_t *buffer = g_malloc0(len);
 	/* Send the message */
 	struct libusb_transfer *ir = libusb_alloc_transfer(0);
-	libusb_fill_bulk_transfer(ir, usb, DNAFX_ENDPOINT_IN, buffer, len, dnafx_usb_cb, GINT_TO_POINTER(DNAFX_TASK_INTERRUPT), 0);
+	libusb_fill_bulk_transfer(ir, usb, DNAFX_ENDPOINT_IN, buffer, len, dnafx_usb_cb, GINT_TO_POINTER(DNAFX_TASK_INTERRUPT), DNAFX_TIMEOUT);
 	int ret = libusb_submit_transfer(ir);
 	if(ret < 0) {
 		DNAFX_LOG(DNAFX_LOG_ERR, "Error submitting interrupt transfer: %d (%s)\n", ret, libusb_strerror(ret));

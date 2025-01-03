@@ -40,13 +40,11 @@ The plan, sooner or later, is to come up with a more or less complete editor for
 - [ ] Interacting with the looper functionality, if possible (@jblackiex is working on that in his repo)
 - [ ] Interacting with the rhythm/tap functionality, if possible
 - [ ] Intercepting asynchronous events from the device (e.g., hardware preset edits, triggers, etc.)
-- [ ] Interactive console for doing things
+- [x] Interactive console for doing things
 - [ ] Support for network protocols for doing things (e.g., netcat/telnet, WebSockets, HTTP, etc.)
 - [ ] Support for Bluetooth commands for doing things
 - [ ] Interactive GUI to mimic the official editor functionality (GTK? SDL2?)
 - [ ] Offline mode for editing presets even without access to the device
-
-Being able to interact with the editor programmatically/dynamically, e.g., via console or network protocol, is of course a priority, since at the time of writing the tool only does something if you specify stuff as command line arguments when you launch it. This means that it's already easy to "script" for most things, e.g., as part of a bash script, but that it's not really a tool that can be launched as a server or daemon to keep a persistent connection to the device, which would allow you to work with the device in a more continuous and interactive way.
 
 # Dependencies
 
@@ -86,7 +84,7 @@ If you launch it with no arguments:
 
 	./dnafx-editor
 
-it will try to connect to the device via USB, "greet" it (send what we figured out to be some initialization messages), retrieve the list of presets from the device, and finally get the list of "extras". Considering that, in its current stage, the editor still doesn't have way to programmatically inject commands (whether on the console or via some network protocol), all you can do at that point is close it, with CTRL+C. At the very least, though, that should do something if everything is set up correctly.
+it will try to connect to the device via USB, "greet" it (send what we figured out to be some initialization messages), retrieve the list of presets from the device, and finally get the list of "extras". Since by default the tool doesn't launch in interactive mode, the tool will automatically close when done.
 
 To save the presets from your device to disk, use `-s` to provide a target folder, e.g.:
 
@@ -110,11 +108,17 @@ If you don't want to do the full setup every time you launch the app, you can pa
 
 	./dnafx-editor -IGE -c 35
 
-If you have custom presets, either because you downloaded one somewhere or you edited one of the existing ones locally, you can upload it on one of the slots on the device. To do that, you first need to provide the preset you want to upload (using either `-b` or `-p`, as we've seen before), and then specify the slot to put the preset into (1-200). This command, for instance, will upload a "Gary Moore" preset I downloaded in PHB format on [guitarpatches](https://guitarpatches.com/patches.php?unit=DNAfxGiT) to slot 200:
+If you have custom presets, either because you downloaded one somewhere or you edited one of the existing ones locally, you can upload it on one of the slots on the device. To do that, you first need to provide the preset you want to upload (using either `-b` or `-p`, as we've seen before), and then specify the slot to put the preset into (1-200) via `-u`. This command, for instance, will upload a "Gary Moore" preset I downloaded in PHB format on [guitarpatches](https://guitarpatches.com/patches.php?unit=DNAfxGiT) to slot 200:
 
 	./dnafx-editor -IGE -u 200 -p ../presets/GARY\ MOORE.phb
 
 Of course, you can always restore one of the original presets by just re-uploading them again to their original spot (assuming you backed them up first with `-s`).
+
+All those features can also be performed interactively, if you launch the tool in interactive mode with `-i`. When you do that, the tool won't shut down after performing the things you asked to do in the command line arguments, but will wait for your commands. The following is an examples of how to import the "Gary Moore" preset programmatically, for instance:
+
+	import-preset phb "../presets/GARY\ MOORE.phb"
+
+Type `help` for a more comprehensive list of the currently supported CLI commands.
 
 This is, in summary, what the tool allows you to do for now. Hopefully further revisions will add more features.
 
